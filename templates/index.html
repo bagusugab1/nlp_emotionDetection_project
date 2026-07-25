@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="Deteksi emosi teks Bahasa Indonesia menggunakan IndoBERT dan NRC Lexicon - Analisis sentimen dan emosi otomatis">
+    <title>Emotion Detection — IndoBERT + NRC</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        /* ========== CSS RESET & VARIABLES ========== */
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a1a;
+            --bg-secondary: #111128;
+            --bg-card: rgba(255, 255, 255, 0.04);
+            --bg-card-hover: rgba(255, 255, 255, 0.07);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-glow: rgba(139, 92, 246, 0.3);
+            --text-primary: #f1f1f7;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-purple: #8b5cf6;
+            --accent-purple-light: #a78bfa;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --gradient-primary: linear-gradient(135deg, #8b5cf6, #3b82f6, #06b6d4);
+            --gradient-card: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(59, 130, 246, 0.05));
+            --shadow-glow: 0 0 60px rgba(139, 92, 246, 0.15);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+            --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-smooth: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            /* Emotion colors */
+            --emotion-anger: #ef4444;
+            --emotion-fear: #a855f7;
+            --emotion-joy: #f59e0b;
+            --emotion-love: #ec4899;
+            --emotion-neutral: #6b7280;
+            --emotion-sad: #3b82f6;
+        }
+
+        /* ========== BASE ========== */
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* ========== ANIMATED BACKGROUND ========== */
+        .bg-orbs {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .bg-orbs .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.3;
+            animation: float 20s ease-in-out infinite;
+        }
+
+        .bg-orbs .orb:nth-child(1) {
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, #8b5cf6, transparent 70%);
+            top: -10%;
+            left: -5%;
+            animation-duration: 25s;
+        }
+
+        .bg-orbs .orb:nth-child(2) {
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, #3b82f6, transparent 70%);
+            bottom: -5%;
+            right: -5%;
+            animation-duration: 20s;
+            animation-delay: -5s;
+        }
+
+        .bg-orbs .orb:nth-child(3) {
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, #06b6d4, transparent 70%);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation-duration: 30s;
+            animation-delay: -10s;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translate(0, 0) scale(1);
+            }
+
+            33% {
+                transform: translate(30px, -20px) scale(1.05);
+            }
+
+            66% {
+                transform: translate(-20px, 20px) scale(0.95);
+            }
+        }
+
+        /* ========== LAYOUT ========== */
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 60px 24px 80px;
+        }
+
+        /* ========== HEADER ========== */
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .header-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 16px;
+            background: rgba(139, 92, 246, 0.12);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--accent-purple-light);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+        }
+
+        .header-badge .dot {
+            width: 6px;
+            height: 6px;
+            background: var(--accent-purple);
+            border-radius: 50%;
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.5;
+                transform: scale(0.8);
+            }
+        }
+
+        .header h1 {
+            font-size: 40px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+            line-height: 1.2;
+        }
+
+        .header p {
+            color: var(--text-secondary);
+            font-size: 16px;
+            font-weight: 300;
+            max-width: 480px;
+            margin: 0 auto;
+        }
+
+        /* ========== GLASS CARD ========== */
+        .glass-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-xl);
+            padding: 32px;
+            transition: border-color var(--transition-smooth), box-shadow var(--transition-smooth);
+        }
+
+        .glass-card:hover {
+            border-color: var(--border-glow);
+            box-shadow: var(--shadow-glow);
+        }
+
+        /* ========== FORM ========== */
+        .input-section {
+            margin-bottom: 32px;
+        }
+
+        .input-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+
+        .textarea-wrapper {
+            position: relative;
+        }
+
+        .textarea-wrapper textarea {
+            width: 100%;
+            min-height: 140px;
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 15px;
+            line-height: 1.7;
+            resize: vertical;
+            transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+            outline: none;
+        }
+
+        .textarea-wrapper textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        .textarea-wrapper textarea:focus {
+            border-color: var(--accent-purple);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+        }
+
+        .char-count {
+            position: absolute;
+            bottom: 12px;
+            right: 16px;
+            font-size: 11px;
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+
+        .submit-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            padding: 16px 24px;
+            margin-top: 16px;
+            background: var(--gradient-primary);
+            border: none;
+            border-radius: var(--radius-md);
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .submit-btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), transparent);
+            opacity: 0;
+            transition: opacity var(--transition-fast);
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(139, 92, 246, 0.35);
+        }
+
+        .submit-btn:hover::before {
+            opacity: 1;
+        }
+
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+
+        .submit-btn svg {
+            width: 18px;
+            height: 18px;
+            transition: transform var(--transition-fast);
+        }
+
+        .submit-btn:hover svg {
+            transform: translateX(3px);
+        }
+
+        /* ========== ERROR ========== */
+        .error-banner {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 18px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            border-radius: var(--radius-md);
+            margin-bottom: 24px;
+            font-size: 14px;
+            color: #fca5a5;
+            animation: shake 0.4s ease-in-out;
+        }
+
+        @keyframes shake {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(-6px);
+            }
+
+            75% {
+                transform: translateX(6px);
+            }
+        }
+
+        /* ========== RESULTS ========== */
+        .results-section {
+            margin-top: 32px;
+            animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(24px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .section-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .section-divider span {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            white-space: nowrap;
+        }
+
+        .section-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-color);
+        }
+
+        /* ========== PREDICTION CARD ========== */
+        .prediction-card {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 24px;
+            background: var(--gradient-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            margin-bottom: 24px;
+            animation: fadeScale 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+        }
+
+        @keyframes fadeScale {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .emotion-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            flex-shrink: 0;
+            animation: popIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+        }
+
+        @keyframes popIn {
+            from {
+                opacity: 0;
+                transform: scale(0.3);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .emotion-icon.anger {
+            background: rgba(239, 68, 68, 0.15);
+        }
+
+        .emotion-icon.fear {
+            background: rgba(168, 85, 247, 0.15);
+        }
+
+        .emotion-icon.joy {
+            background: rgba(245, 158, 11, 0.15);
+        }
+
+        .emotion-icon.love {
+            background: rgba(236, 72, 153, 0.15);
+        }
+
+        .emotion-icon.neutral {
+            background: rgba(107, 114, 128, 0.15);
+        }
+
+        .emotion-icon.sad {
+            background: rgba(59, 130, 246, 0.15);
+        }
+
+        .prediction-info {
+            flex: 1;
+        }
+
+        .prediction-info .label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+
+        .prediction-info .value {
+            font-size: 26px;
+            font-weight: 700;
+            text-transform: capitalize;
+        }
+
+        .prediction-info .value.anger {
+            color: var(--emotion-anger);
+        }
+
+        .prediction-info .value.fear {
+            color: var(--emotion-fear);
+        }
+
+        .prediction-info .value.joy {
+            color: var(--emotion-joy);
+        }
+
+        .prediction-info .value.love {
+            color: var(--emotion-love);
+        }
+
+        .prediction-info .value.neutral {
+            color: var(--emotion-neutral);
+        }
+
+        .prediction-info .value.sad {
+            color: var(--emotion-sad);
+        }
+
+        .prediction-confidence {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        /* ========== TEXT DETAILS ========== */
+        .text-detail {
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            margin-bottom: 12px;
+            animation: fadeScale 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
+        }
+
+        .text-detail .detail-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }
+
+        .text-detail .detail-value {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            word-break: break-word;
+        }
+
+        /* ========== PROBABILITY BARS ========== */
+        .probabilities-section {
+            margin-top: 24px;
+        }
+
+        .prob-item {
+            display: grid;
+            grid-template-columns: 90px 1fr 60px;
+            align-items: center;
+            gap: 14px;
+            padding: 10px 0;
+            animation: fadeScale 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        .prob-item:nth-child(1) {
+            animation-delay: 0.15s;
+        }
+
+        .prob-item:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .prob-item:nth-child(3) {
+            animation-delay: 0.25s;
+        }
+
+        .prob-item:nth-child(4) {
+            animation-delay: 0.3s;
+        }
+
+        .prob-item:nth-child(5) {
+            animation-delay: 0.35s;
+        }
+
+        .prob-item:nth-child(6) {
+            animation-delay: 0.4s;
+        }
+
+        .prob-item+.prob-item {
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .prob-label {
+            font-size: 13px;
+            font-weight: 500;
+            text-transform: capitalize;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .prob-label .emoji {
+            font-size: 16px;
+        }
+
+        .prob-bar-track {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 100px;
+            overflow: hidden;
+        }
+
+        .prob-bar-fill {
+            height: 100%;
+            border-radius: 100px;
+            transition: width 1s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+        }
+
+        .prob-bar-fill.anger {
+            background: linear-gradient(90deg, var(--emotion-anger), #f87171);
+        }
+
+        .prob-bar-fill.fear {
+            background: linear-gradient(90deg, var(--emotion-fear), #c084fc);
+        }
+
+        .prob-bar-fill.joy {
+            background: linear-gradient(90deg, var(--emotion-joy), #fbbf24);
+        }
+
+        .prob-bar-fill.love {
+            background: linear-gradient(90deg, var(--emotion-love), #f472b6);
+        }
+
+        .prob-bar-fill.neutral {
+            background: linear-gradient(90deg, var(--emotion-neutral), #9ca3af);
+        }
+
+        .prob-bar-fill.sad {
+            background: linear-gradient(90deg, var(--emotion-sad), #60a5fa);
+        }
+
+        .prob-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ========== FOOTER ========== */
+        .footer {
+            text-align: center;
+            margin-top: 48px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .footer p {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .footer .tech-stack {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .footer .tech-tag {
+            padding: 4px 10px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 100px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* ========== LOADING ========== */
+        .submit-btn .spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        .submit-btn.loading .spinner {
+            display: block;
+        }
+
+        .submit-btn.loading .btn-text {
+            display: none;
+        }
+
+        .submit-btn.loading svg {
+            display: none;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ========== BUTTON GROUP ========== */
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .btn-group .submit-btn {
+            margin-top: 0;
+            flex: 1;
+        }
+
+        .reset-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 16px 20px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-secondary);
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            white-space: nowrap;
+        }
+
+        .reset-btn:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.2);
+            color: var(--text-primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .reset-btn:active {
+            transform: translateY(0);
+        }
+
+        .reset-btn svg {
+            width: 16px;
+            height: 16px;
+            transition: transform var(--transition-fast);
+        }
+
+        .reset-btn:hover svg {
+            transform: rotate(-45deg);
+        }
+
+        /* ========== RESPONSIVE ========== */
+        @media (max-width: 640px) {
+            .container {
+                padding: 40px 16px 60px;
+            }
+
+            .header h1 {
+                font-size: 28px;
+            }
+
+            .glass-card {
+                padding: 20px;
+            }
+
+            .prediction-card {
+                flex-direction: column;
+                text-align: center;
+                padding: 20px;
+            }
+
+            .prob-item {
+                grid-template-columns: 80px 1fr 50px;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Background orbs -->
+    <div class="bg-orbs" aria-hidden="true">
+        <div class="orb"></div>
+        <div class="orb"></div>
+        <div class="orb"></div>
+    </div>
+    <main class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-badge">
+                <span class="dot"></span>
+                IndoBERT + NRC Lexicon
+            </div>
+            <h1>Emotion Detection</h1>
+            <p>Analisis emosi teks Bahasa Indonesia secara real-time menggunakan deep learning</p>
+        </header>
+        <!-- Input Card -->
+        <div class="glass-card">
+            {% if error %}
+            <div class="error-banner" id="error-banner">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="15" y1="9" x2="9" y2="15" />
+                    <line x1="9" y1="9" x2="15" y2="15" />
+                </svg>
+                {{ error }}
+            </div>
+            {% endif %}
+            <form action="/predict" method="POST" id="predict-form">
+                <div class="input-section">
+                    <label class="input-label" for="text_input">Masukkan Teks</label>
+                    <div class="textarea-wrapper">
+                        <textarea id="text_input" name="text_input"
+                            placeholder="Ketik atau tempel teks Bahasa Indonesia di sini untuk dianalisis emosinya..."
+                            rows="5" maxlength="2000">{% if original_text %}{{ original_text }}{% endif %}</textarea>
+                        <span class="char-count" id="char-count">0 / 2000</span>
+                    </div>
+                    <div class="btn-group">
+                        <button type="submit" class="submit-btn" id="submit-btn">
+                            <span class="btn-text">Analisis Emosi</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                                <polyline points="12 5 19 12 12 19" />
+                            </svg>
+                            <div class="spinner"></div>
+                        </button>
+                        <button type="button" class="reset-btn" id="reset-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="1 4 1 10 7 10" />
+                                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                            </svg>
+                            Reset
+                        </button>
+                    </div>
+                </div>
+            </form>
+            {% if prediction %}
+            <!-- Results -->
+            <div class="results-section">
+                <div class="section-divider"><span>Hasil Analisis</span></div>
+                <!-- Main prediction -->
+                <div class="prediction-card">
+                    <div class="emotion-icon {{ prediction }}">
+                        {% if prediction == 'anger' %}😠
+                        {% elif prediction == 'fear' %}😨
+                        {% elif prediction == 'joy' %}😄
+                        {% elif prediction == 'love' %}🥰
+                        {% elif prediction == 'neutral' %}😐
+                        {% elif prediction == 'sad' %}😢
+                        {% endif %}
+                    </div>
+                    <div class="prediction-info">
+                        <div class="label">Emosi Terdeteksi</div>
+                        <div class="value {{ prediction }}">{{ prediction }}</div>
+                        <div class="prediction-confidence">Confidence: {{ "%.1f"|format(probabilities[0].probabilitas *
+                            100) }}%</div>
+                    </div>
+                </div>
+                <!-- Text details -->
+                <div class="text-detail">
+                    <div class="detail-label">Teks Asli</div>
+                    <div class="detail-value">{{ original_text }}</div>
+                </div>
+                <div class="text-detail">
+                    <div class="detail-label">Setelah Preprocessing</div>
+                    <div class="detail-value">{{ preprocessed }}</div>
+                </div>
+                <!-- Probability bars -->
+                <div class="probabilities-section">
+                    <div class="section-divider"><span>Distribusi Probabilitas</span></div>
+                    {% for item in probabilities %}
+                    <div class="prob-item">
+                        <div class="prob-label">
+                            <span class="emoji">
+                                {% if item.emosi == 'anger' %}😠
+                                {% elif item.emosi == 'fear' %}😨
+                                {% elif item.emosi == 'joy' %}😄
+                                {% elif item.emosi == 'love' %}🥰
+                                {% elif item.emosi == 'neutral' %}😐
+                                {% elif item.emosi == 'sad' %}😢
+                                {% endif %}
+                            </span>
+                            {{ item.emosi }}
+                        </div>
+                        <div class="prob-bar-track">
+                            <div class="prob-bar-fill {{ item.emosi }}" style="width: {{ "
+                                %.1f"|format(item.probabilitas * 100) }}%"></div>
+                        </div>
+                        <div class="prob-value">{{ "%.1f"|format(item.probabilitas * 100) }}%</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Powered by IndoBERT + NRC Emotion Lexicon Early Fusion CNN2D</p>
+            <div class="tech-stack">
+                <span class="tech-tag">PyTorch</span>
+                <span class="tech-tag">Transformers</span>
+                <span class="tech-tag">Flask</span>
+                <span class="tech-tag">NRC Lexicon</span>
+            </div>
+        </footer>
+    </main>
+    <script>
+        // Character counter
+        const textarea = document.getElementById('text_input');
+        const charCount = document.getElementById('char-count');
+        function updateCount() {
+            const len = textarea.value.length;
+            charCount.textContent = len + ' / 2000';
+        }
+        textarea.addEventListener('input', updateCount);
+        updateCount();
+        // Loading state
+        const form = document.getElementById('predict-form');
+        const btn = document.getElementById('submit-btn');
+        form.addEventListener('submit', function () {
+            if (textarea.value.trim()) {
+                btn.classList.add('loading');
+                btn.disabled = true;
+            }
+        });
+        // Reset button — navigates to home to clear everything
+        document.getElementById('reset-btn').addEventListener('click', function () {
+            window.location.href = '/';
+        });
+        // Animate probability bars on load
+        document.addEventListener('DOMContentLoaded', function () {
+            const bars = document.querySelectorAll('.prob-bar-fill');
+            bars.forEach(function (bar) {
+                const targetWidth = bar.style.width;
+                bar.style.width = '0%';
+                setTimeout(function () {
+                    bar.style.width = targetWidth;
+                }, 100);
+            });
+        });
+    </script>
+</body>
+
+</html>
